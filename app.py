@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 import yaml
 
@@ -131,110 +130,77 @@ def main():
     if selected_author != "All":
         filtered_df = filtered_df[filtered_df["author"] == selected_author]
 
-    # メトリクス
-    st.header("サマリー")
+    # 過去7日間と前週のデータを抽出
+    today = pd.Timestamp.now(tz="UTC").normalize()
+    last_7_days = filtered_df[filtered_df["merged_at"] >= today - pd.Timedelta(days=7)]
+    prev_7_days = filtered_df[
+        (filtered_df["merged_at"] >= today - pd.Timedelta(days=14)) &
+        (filtered_df["merged_at"] < today - pd.Timedelta(days=7))
+    ]
+
+    # メトリクス（過去7日間実績・前週比）
+    st.header("サマリー（過去7日間）")
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.metric("総PR数", len(filtered_df))
+        current_count = len(last_7_days)
+        prev_count = len(prev_7_days)
+        delta_count = current_count - prev_count if prev_count > 0 else None
+        st.metric("PR数", current_count, delta=delta_count)
     with col2:
-        avg_score = filtered_df["size_score"].mean() if len(filtered_df) > 0 else 0
-        st.metric("平均スコア", f"{avg_score:.2f}")
+        current_sum = last_7_days["size_score"].sum() if len(last_7_days) > 0 else 0
+        prev_sum = prev_7_days["size_score"].sum() if len(prev_7_days) > 0 else None
+        delta_sum = f"{current_sum - prev_sum:.2f}" if prev_sum is not None else None
+        st.metric("合計スコア", f"{current_sum:.2f}", delta=delta_sum, delta_color="inverse")
     with col3:
-        avg_loc = filtered_df["loc"].mean() if len(filtered_df) > 0 else 0
-        st.metric("平均LOC", f"{avg_loc:.0f}")
+        current_loc = last_7_days["loc"].mean() if len(last_7_days) > 0 else 0
+        prev_loc = prev_7_days["loc"].mean() if len(prev_7_days) > 0 else None
+        delta_loc = f"{current_loc - prev_loc:.0f}" if prev_loc is not None else None
+        st.metric("平均LOC", f"{current_loc:.0f}", delta=delta_loc, delta_color="inverse")
     with col4:
-        small_pr_ratio = (
-            len(filtered_df[filtered_df["size_score"] <= SCORE_TARGET]) / len(filtered_df) * 100
-            if len(filtered_df) > 0 else 0
+        current_small = (
+            len(last_7_days[last_7_days["size_score"] <= SCORE_TARGET]) / len(last_7_days) * 100
+            if len(last_7_days) > 0 else 0
         )
-        st.metric("小規模PR率", f"{small_pr_ratio:.1f}%", help=f"スコア{SCORE_TARGET}以下のPR割合")
+        prev_small = (
+            len(prev_7_days[prev_7_days["size_score"] <= SCORE_TARGET]) / len(prev_7_days) * 100
+            if len(prev_7_days) > 0 else None
+        )
+        delta_small = f"{current_small - prev_small:.1f}%" if prev_small is not None else None
+        st.metric("小規模PR率", f"{current_small:.1f}%", delta=delta_small, help=f"スコア{SCORE_TARGET}以下のPR割合")
 
-    # スコア推移グラフ
+    # スコア推移グラフ（日次合計・リポジトリ別積み上げ）
     st.header("スコア推移")
 
     if len(filtered_df) > 0:
-        fig = px.scatter(
-            filtered_df,
-            x="merged_at",
+        daily_scores = filtered_df.groupby(["date", "repo"])["size_score"].sum().reset_index()
+        daily_scores["date"] = pd.to_datetime(daily_scores["date"])
+
+        fig = px.bar(
+            daily_scores,
+            x="date",
             y="size_score",
             color="repo",
-            hover_data=["pr_number", "author", "loc", "changed_files"],
-            title="PR Size Score (時系列)",
+            title="日次合計スコア（リポジトリ別積み上げ）",
+            labels={"size_score": "合計スコア", "date": "日付", "repo": "リポジトリ"},
         )
-        fig.add_hline(
-            y=SCORE_TARGET,
-            line_dash="dash",
-            line_color="green",
-            annotation_text=f"目標: {SCORE_TARGET}",
-        )
+        fig.update_layout(barmode="stack")
         st.plotly_chart(fig, use_container_width=True)
 
-    # 週次平均
-    st.header("週次平均スコア")
+    # リポジトリ別比較（過去7日間・円グラフ）
+    st.header("リポジトリ別比較（過去7日間）")
 
-    if len(filtered_df) > 0:
-        weekly = filtered_df.groupby("week").agg({
-            "size_score": "mean",
-            "pr_number": "count"
-        }).reset_index()
-        weekly.columns = ["week", "avg_score", "pr_count"]
+    if len(last_7_days) > 0 and selected_repo == "All":
+        repo_scores = last_7_days.groupby("repo")["size_score"].sum().reset_index()
 
-        fig2 = go.Figure()
-        fig2.add_trace(go.Bar(
-            x=weekly["week"],
-            y=weekly["avg_score"],
-            name="平均スコア",
-            text=weekly["pr_count"].apply(lambda x: f"{x} PRs"),
-            textposition="outside",
-        ))
-        fig2.add_hline(y=SCORE_TARGET, line_dash="dash", line_color="green")
-        fig2.update_layout(title="週次平均スコア")
-        st.plotly_chart(fig2, use_container_width=True)
-
-    # リポジトリ別比較
-    st.header("リポジトリ別比較")
-
-    if len(df) > 0 and selected_repo == "All":
-        repo_stats = df.groupby("repo").agg({
-            "size_score": ["mean", "median", "count"],
-            "loc": "mean",
-        }).reset_index()
-        repo_stats.columns = ["repo", "avg_score", "median_score", "pr_count", "avg_loc"]
-
-        fig3 = px.bar(
-            repo_stats,
-            x="repo",
-            y="avg_score",
-            color="repo",
-            title="リポジトリ別 平均スコア",
-            text="pr_count",
+        fig3 = px.pie(
+            repo_scores,
+            values="size_score",
+            names="repo",
+            title="リポジトリ別 合計スコア割合（過去7日間）",
         )
-        fig3.add_hline(y=SCORE_TARGET, line_dash="dash", line_color="green")
+        fig3.update_traces(textposition="inside", textinfo="percent+label")
         st.plotly_chart(fig3, use_container_width=True)
-
-    # 著者別統計
-    st.header("著者別統計")
-
-    if len(filtered_df) > 0:
-        author_stats = filtered_df.groupby("author").agg({
-            "size_score": ["mean", "count"],
-            "loc": "mean",
-        }).reset_index()
-        author_stats.columns = ["author", "avg_score", "pr_count", "avg_loc"]
-        author_stats = author_stats.sort_values("avg_score")
-
-        fig4 = px.bar(
-            author_stats,
-            x="author",
-            y="avg_score",
-            color="avg_score",
-            color_continuous_scale="RdYlGn_r",
-            title="著者別 平均スコア",
-            text="pr_count",
-        )
-        fig4.add_hline(y=SCORE_TARGET, line_dash="dash", line_color="green")
-        st.plotly_chart(fig4, use_container_width=True)
 
     # PR一覧
     st.header("PR一覧")
