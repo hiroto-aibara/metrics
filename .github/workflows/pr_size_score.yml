@@ -1,0 +1,41 @@
+name: PR Size Score
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  score:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compute size score
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python scripts/compute_pr_size_score.py
+
+      - name: Commit metrics
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add metrics/pr_size_scores.jsonl
+          git commit -m "chore(metrics): add size score for #${{ github.event.pull_request.number }}" || exit 0
+          git push
