@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Data (fetched from remote)
+data/pr_size_scores.jsonl
+
+# IDE
+.idea/
+.vscode/
