@@ -1,0 +1,4 @@
+repositories:
+  - boost-consulting/OnboardAI
+  - boost-consulting/inquiry_management
+  - hiroto-aibara/metrics
