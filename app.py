@@ -86,9 +86,9 @@ def load_data() -> pd.DataFrame:
         return pd.DataFrame()
 
     df = pd.DataFrame(records)
-    df["merged_at"] = pd.to_datetime(df["merged_at"])
+    df["merged_at"] = pd.to_datetime(df["merged_at"]).dt.tz_convert("Asia/Tokyo")
     df["date"] = df["merged_at"].dt.date
-    df["week"] = df["merged_at"].dt.to_period("W").astype(str)
+    df["week"] = df["merged_at"].dt.tz_localize(None).dt.to_period("W").astype(str)
     return df
 
 
