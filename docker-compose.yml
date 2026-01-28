@@ -1,0 +1,15 @@
+services:
+  dashboard:
+    build: .
+    ports:
+      - "${DASHBOARD_PORT:-18081}:8501"
+    volumes:
+      - ./app.py:/app/app.py
+      - ./config.yaml:/app/config.yaml
+      - ./data:/app/data
+      - ./metrics:/app/metrics
+      - ./scripts:/app/scripts
+      - ~/.config/gh:/root/.config/gh:ro
+    environment:
+      - STREAMLIT_SERVER_RUN_ON_SAVE=true
+      - GH_TOKEN=${GH_TOKEN}
