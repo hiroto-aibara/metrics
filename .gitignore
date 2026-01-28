@@ -10,3 +10,6 @@ data/pr_size_scores.jsonl
 # IDE
 .idea/
 .vscode/
+
+# Environment
+.env*
