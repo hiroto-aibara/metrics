@@ -1,5 +1,7 @@
 repositories:
   - boost-consulting/OnboardAI
   - boost-consulting/inquiry_management
+  - boost-consulting/ex-matsuri
   - hiroto-aibara/metrics
   - hiroto-aibara/secretary-ai
+  - hiroto-aibara/design-system
